@@ -729,22 +729,83 @@ export function estimateMaterials(
 
 // ==================== PLASTERING ====================
 export interface PlasteringCalc {
-  area: number; // sq ft
-  thicknessMm: number;
-  cementBags: number;
-  sandM3: number;
+  externalArea: number; // m²
+  internalArea: number; // m²
+  totalArea: number; // m²
+  wetVolume: number; // m³
+  dryVolume: number; // m³
+  cementBags: number; // bags
+  sandM3: number; // m³
+  steps: string[];
 }
 
-export function calculatePlastering(lengthFt: number, breadthFt: number, floors: number, thicknessMm: number): PlasteringCalc {
-  const perimeter = 2 * (lengthFt + breadthFt);
-  const wallArea = perimeter * FLOOR_HEIGHT_FT * floors; // sq ft
-  const ceilingArea = lengthFt * breadthFt * floors;
-  const totalArea = wallArea + ceilingArea;
-  const totalAreaM2 = totalArea * 0.0929;
-  const volumeM3 = totalAreaM2 * (thicknessMm / 1000);
-  // Ratio 1:4 for plastering
-  const cementBags = Math.ceil(volumeM3 * 1.3 * (1 / 5) / 0.035); // dry volume factor 1.3
-  const sandM3 = +(volumeM3 * 1.3 * (4 / 5)).toFixed(2);
+export function calculatePlastering(
+  lengthFt: number, 
+  breadthFt: number, 
+  floors: number,
+  thicknessMm: number = 12,
+  mixRatioCement: number = 1,
+  mixRatioSand: number = 6
+): PlasteringCalc {
+  // Convert dimensions to meters
+  const L_m = lengthFt * 0.3048;
+  const B_m = breadthFt * 0.3048;
+  // Use 3.0m standard floor height as requested
+  const H_m = 3.0;
 
-  return { area: +totalArea.toFixed(0), thicknessMm, cementBags, sandM3 };
+  // Step 2: Calculate perimeter
+  const perimeter = 2 * (L_m + B_m);
+
+  // Step 3: External wall plaster area (ONE SIDE)
+  // Deduction = 10%
+  const extAreaRaw = perimeter * H_m * floors;
+  const netExtArea = extAreaRaw * 0.90;
+
+  // Step 4: Calculate internal wall plaster area (TWO SIDES)
+  // Assume internal wall length is 1.5x perimeter
+  // Deduction = 12%
+  const internalLength = 1.5 * perimeter;
+  const intAreaRaw = internalLength * H_m * floors * 2;
+  const netIntArea = intAreaRaw * 0.88;
+
+  // Step 5: Total net plaster area
+  const netTotalArea = netExtArea + netIntArea;
+
+  // Step 6: Wet Volume
+  const wetVolume = netTotalArea * (thicknessMm / 1000);
+
+  // Step 7: Convert to dry volume (× 1.33)
+  const dryVolume = wetVolume * 1.33;
+
+  // Step 8: Material calculation
+  const totalParts = mixRatioCement + mixRatioSand;
+  const cementVol = dryVolume * (mixRatioCement / totalParts);
+  const sandVol = dryVolume * (mixRatioSand / totalParts);
+
+  // Step 9: Convert cement volume to bags (1m³ = 28.8 bags)
+  const cementBagsTotal = Math.ceil(cementVol * 28.8);
+  const sandM3Total = +sandVol.toFixed(3);
+
+  const steps = [
+    `1. METRICS: Perimeter = ${perimeter.toFixed(2)}m, Height = ${H_m}m, Floors = ${floors}`,
+    `2. EXT AREA (1 SIDE): ${perimeter.toFixed(2)}m × ${H_m}m × ${floors} = ${extAreaRaw.toFixed(2)} m²`,
+    `   ↳ Net Ext Area (-10%): ${netExtArea.toFixed(2)} m²`,
+    `3. INT AREA (2 SIDES): (1.5 × ${perimeter.toFixed(2)}m) × ${H_m}m × ${floors} × 2 = ${intAreaRaw.toFixed(2)} m²`,
+    `   ↳ Net Int Area (-12%): ${netIntArea.toFixed(2)} m²`,
+    `4. TOTAL NET AREA: ${netExtArea.toFixed(2)} + ${netIntArea.toFixed(2)} = ${netTotalArea.toFixed(2)} m²`,
+    `5. WET VOLUME: ${netTotalArea.toFixed(2)} m² × (${thicknessMm}/1000)m = ${wetVolume.toFixed(2)} m³`,
+    `6. DRY VOLUME: ${wetVolume.toFixed(2)} m³ × 1.33 = ${dryVolume.toFixed(2)} m³`,
+    `7. MATERIALS (${mixRatioCement}:${mixRatioSand}): Cement = ${cementBagsTotal} bags, Sand = ${sandM3Total} m³`
+  ];
+
+  return {
+    externalArea: +netExtArea.toFixed(2),
+    internalArea: +netIntArea.toFixed(2),
+    totalArea: +netTotalArea.toFixed(2),
+    wetVolume: +wetVolume.toFixed(2),
+    dryVolume: +dryVolume.toFixed(2),
+    cementBags: cementBagsTotal,
+    sandM3: sandM3Total,
+    steps
+  };
 }
